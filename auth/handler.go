@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -18,12 +19,12 @@ var users = map[string]string{
 
 // Create model the structure of a user, that will be an implentation pf both the request body and in the DB
 type qualifications struct {
-	Password string `json:""password"`
-	userName string `json: "username"`
+	Password string `json:"password"`
+	userName string `json:"username"`
 }
 
 type Claims struct {
-	userName string `json: "username"`
+	userName string `json:"username"`
 	jwt.RegisteredClaims
 }
 
@@ -64,9 +65,52 @@ func SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// We set the client cookie for "token" as the JWT we just generated
 	http.SetCookie(w, &http.Cookie{
 		Name:    "token",
 		Value:   tokenString,
 		Expires: expirationTime,
+	})
+}
+
+func Welcome(w http.ResponseWriter, r *http.Request) {
+	// We obtain the session token from the requests cookies
+	c, err := r.Cookie("token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	tokenString := c.Value
+
+	claims := &Claims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		return jwtkey, nil
+	})
+	if err != nil {
+		if err == jwt.ErrSignatureInvalid {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !token.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+
+	w.Write([]byte(fmt.Sprintf("Welcome %s!", claims.userName)))
+}
+
+func Logout(w http.ResponseWriter, _ *http.Request) {
+	// immediately clear the token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:    "token",
+		Expires: time.Now(),
 	})
 }
